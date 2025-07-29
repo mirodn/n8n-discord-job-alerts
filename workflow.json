@@ -1,0 +1,218 @@
+{
+  "name": "Job Alerts on Discord",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [5],
+              "triggerAtHour": 12
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 80],
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "sent_jobs",
+        "filterType": "string",
+        "filterString": "sent_at=lt.{{ $now.minus({ weeks: 6 }).toFormat('yyyy-MM-dd\\'T\\'HH:mm:ssZZ') }}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [224, 80],
+      "name": "Delete old rows"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "userAgents",
+              "value": "[\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0.0.0 Safari/537.36\", \"Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) Safari/605.1.15\", \"Mozilla/5.0 (X11; Linux x86_64) Chrome/124.0.0.0 Safari/537.36\"]",
+              "type": "array"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [448, 80],
+      "name": "Set User Agents"
+    },
+    {
+      "parameters": {
+        "url": "https://swissdevjobs.ch/api/jobsLight",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "={{$json.userAgents[Math.floor(Math.random() * $json.userAgents.length)]}}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [672, 80],
+      "name": "Fetch Jobs"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.actualCity }}",
+              "rightValue": "Zürich",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "leftValue": "={{ $json.expLevel }}",
+              "rightValue": "Senior",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [896, 80],
+      "name": "Filter Location & Level"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "leftValue": "={{ $json.techCategory }}", "rightValue": "Business", "operator": { "type": "string", "operation": "equals" } },
+            { "leftValue": "={{ $json.techCategory }}", "rightValue": "Architect", "operator": { "type": "string", "operation": "equals" } },
+            { "leftValue": "={{ $json.techCategory }}", "rightValue": "IT", "operator": { "type": "string", "operation": "equals" } },
+            { "leftValue": "={{ $json.techCategory }}", "rightValue": "Security", "operator": { "type": "string", "operation": "equals" } }
+          ],
+          "combinator": "or"
+        }
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [1120, 80],
+      "name": "Filter Category"
+    },
+    {
+      "parameters": {
+        "options": { "reset": false }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1344, 80],
+      "name": "Loop Over Jobs"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "sent_jobs",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            { "keyName": "job_id", "condition": "eq", "keyValue": "={{ $json._id }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1568, -64],
+      "name": "Check if Sent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.all()[0];\nconst hasData = item.json && Object.keys(item.json).length > 0;\nconst count = hasData ? 1 : 0;\nreturn [{ json: { foundCount: count } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1792, -64],
+      "name": "Check Result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.foundCount }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2016, -64],
+      "name": "If Not Sent"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "guildId": "YOUR_DISCORD_SERVER_ID",
+        "channelId": "YOUR_DISCORD_CHANNEL_ID",
+        "content": "=━━━━━━━━━━━━━━━━━━\n🎯 **{{ $('Filter Category').item.json.name }}** @ *{{ $('Filter Category').item.json.company }}*\n\n📍 Location: {{ $('Filter Category').item.json.address }}\n💸 Salary: {{ $('Filter Category').item.json.annualSalaryFrom }}–{{ $('Filter Category').item.json.annualSalaryTo }} CHF/year\n🔗 [Apply Now]({{ $('Filter Category').item.json.redirectJobUrl }})\n━━━━━━━━━━━━━━━━━━"
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [2240, -64],
+      "name": "Send Discord Message"
+    },
+    {
+      "parameters": {
+        "tableId": "sent_jobs",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "job_id", "fieldValue": "={{ $('Filter Category').item.json._id }}" },
+            { "fieldId": "sent_at", "fieldValue": "={{ $json.timestamp }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2464, -64],
+      "name": "Save Job ID"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2688, 8],
+      "name": "Wait"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Delete old rows", "type": "main", "index": 0 }]] },
+    "Delete old rows": { "main": [[{ "node": "Set User Agents", "type": "main", "index": 0 }]] },
+    "Set User Agents": { "main": [[{ "node": "Fetch Jobs", "type": "main", "index": 0 }]] },
+    "Fetch Jobs": { "main": [[{ "node": "Filter Location & Level", "type": "main", "index": 0 }]] },
+    "Filter Location & Level": { "main": [[{ "node": "Filter Category", "type": "main", "index": 0 }]] },
+    "Filter Category": { "main": [[{ "node": "Loop Over Jobs", "type": "main", "index": 0 }]] },
+    "Loop Over Jobs": { "main": [[], [{ "node": "Check if Sent", "type": "main", "index": 0 }]] },
+    "Check if Sent": { "main": [[{ "node": "Check Result", "type": "main", "index": 0 }]] },
+    "Check Result": { "main": [[{ "node": "If Not Sent", "type": "main", "index": 0 }]] },
+    "If Not Sent": {
+      "main": [
+        [{ "node": "Send Discord Message", "type": "main", "index": 0 }],
+        [{ "node": "Loop Over Jobs", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Discord Message": { "main": [[{ "node": "Save Job ID", "type": "main", "index": 0 }]] },
+    "Save Job ID": { "main": [[{ "node": "Wait", "type": "main", "index": 0 }]] },
+    "Wait": { "main": [[{ "node": "Loop Over Jobs", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {}
+}
