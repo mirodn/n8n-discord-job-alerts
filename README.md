@@ -2,8 +2,6 @@
 
 This basic workflow fetches job listings from **SwissDevJobs API**, filters them by location, category, and experience level, then posts formatted alerts to a Discord channel. It also ensures no duplicates and cleans up old entries after 6 weeks using Supabase.
 
----
-
 ## Features
 
 - Fetch job postings from SwissDevJobs API
@@ -21,8 +19,6 @@ This basic workflow fetches job listings from **SwissDevJobs API**, filters them
 - [n8n](https://n8n.io) (self-hosted or cloud)
 - Discord Bot Token ([Discord Developer Portal](https://discord.com/developers/applications))
 - Supabase Project (with table `sent_jobs`)
-
----
 
 ## Setup Instructions
 
